@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>畫的哀傷 - 互動學習 App</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.263.1"
+        }
+    }
+    </script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f5f5f4; /* stone-100 */
+        }
+        
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        
+        .animate-bounce-subtle {
+            animation: bounceSubtle 2s infinite;
+        }
+
+        .animate-confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes bounceSubtle {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        /* Hide scrollbar for clean UI */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #d6d3d1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a29e;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            BookOpen, PenTool, History, Heart, AlertCircle, CheckCircle, XCircle, 
+            ChevronRight, LogOut, User, ArrowLeft, Zap, Volume2, Home, LayoutGrid, 
+            Layers, ChevronDown, ChevronUp, Loader2, Sparkles, Image as ImageIcon, Download, ImageOff,
+            Gavel, Scale, FileText, List, Leaf, Droplets, Tent, Mountain, PlayCircle, FastForward, RotateCcw,
+            Flower, BookMarked, Camera, Save, Users, Trophy, Flag, Book
+        } from 'lucide-react';
+
+        // --- LocalStorage Database Helper (Updated Keys for Lesson 10) ---
+        const STORAGE_KEYS = {
+            USER: 'Chinese3-L10_user', 
+            HISTORY: 'Chinese3-L10_history',
+            MISTAKES: 'Chinese3-L10_mistakes',
+            FAVORITES: 'Chinese3-L10_favorites',
+            QUIZ_PROGRESS_FULL: 'Chinese3-L10_quiz_progress_full',
+            QUIZ_PROGRESS_QUICK: 'Chinese3-L10_quiz_progress_quick'
+        };
+
+        const LocalDB = {
+            getUser: () => {
+                const data = localStorage.getItem(STORAGE_KEYS.USER);
+                return data ? JSON.parse(data) : null;
+            },
+            saveUser: (name) => {
+                const user = { uid: 'local-user', displayName: name, lastLogin: new Date().toISOString() };
+                localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+                return user;
+            },
+            clearUser: () => {
+                localStorage.removeItem(STORAGE_KEYS.USER);
+            },
+            getHistory: () => {
+                const data = localStorage.getItem(STORAGE_KEYS.HISTORY);
+                return data ? JSON.parse(data) : [];
+            },
+            addHistory: (record) => {
+                const list = LocalDB.getHistory();
+                const newRecord = { ...record, id: Date.now().toString(), date: new Date().toISOString() };
+                list.unshift(newRecord); 
+                localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(list));
+                return newRecord;
+            },
+            getMistakes: () => {
+                const data = localStorage.getItem(STORAGE_KEYS.MISTAKES);
+                return data ? JSON.parse(data) : [];
+            },
+            addMistake: (mistake) => {
+                const list = LocalDB.getMistakes();
+                const exists = list.some(item => item.id === mistake.id);
+                if (!exists) {
+                    const newMistake = { ...mistake, timestamp: new Date().toISOString() };
+                    list.unshift(newMistake);
+                    localStorage.setItem(STORAGE_KEYS.MISTAKES, JSON.stringify(list));
+                }
+            },
+            removeMistake: (id) => {
+                const list = LocalDB.getMistakes().filter(item => item.id.toString() !== id.toString());
+                localStorage.setItem(STORAGE_KEYS.MISTAKES, JSON.stringify(list));
+            },
+            getFavorites: () => {
+                const data = localStorage.getItem(STORAGE_KEYS.FAVORITES);
+                return data ? new Set(JSON.parse(data)) : new Set();
+            },
+            toggleFavorite: (id) => {
+                const favs = LocalDB.getFavorites();
+                const idStr = id.toString();
+                if (favs.has(idStr)) {
+                    favs.delete(idStr);
+                } else {
+                    favs.add(idStr);
+                }
+                localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(Array.from(favs)));
+                return favs;
+            },
+            removeFavorite: (id) => {
+                const favs = LocalDB.getFavorites();
+                favs.delete(id.toString());
+                localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(Array.from(favs)));
+            },
+            saveProgress: (key, data) => {
+                localStorage.setItem(key, JSON.stringify(data));
+            },
+            getProgress: (key) => {
+                const data = localStorage.getItem(key);
+                return data ? JSON.parse(data) : null;
+            },
+            clearProgress: (key) => {
+                localStorage.removeItem(key);
+            }
+        };
+        
+        // --- Global Data Definitions (Updated for Lesson 10) ---
+        const STUDY_CONTENT = {
+            intro: {
+                title: "課文補充注釋",
+                items: [
+                    { term: "1. 孩提", definition: "需人提攜、懷抱的幼兒。", filename: "childhood" },
+                    { term: "2. 盛氣凌人", definition: "用傲慢的氣勢壓迫別人。", filename: "arrogant" },
+                    { term: "3. 挫", definition: "壓抑、抑制。", filename: "suppress" },
+                    { term: "4. 臨摹", definition: "照書畫原樣描摹。", filename: "copying_art" },
+                    { term: "5. 祕而不宣", definition: "隱瞞所知，不作宣布。", filename: "secret" },
+                    { term: "6. 更勝一籌", definition: "比較之下，較為優秀、出色。\n(補充：略勝一籌：比喻兩相比較，其中一方稍微高明一些。\n略遜一籌：比喻兩相比較，其中一方稍微差一些。\n一籌莫展：一點計策也施展不出來。比喻毫無辦法。)", filename: "better_strategy" },
+                    { term: "7. 籠罩", definition: "覆蓋。", filename: "shroud" },
+                    { term: "8. 摯友", definition: "情誼深厚的朋友。\n(補充：「桃李不言，下自成蹊」：比喻為人真誠篤實，自然能感召人心。此處可形容志村真誠篤實，感召了岡本的心。)", filename: "best_friend" },
+                    { term: "9. 渾然", definition: "全然、完全。", filename: "completely" },
+                    { term: "10. 輟學", definition: "中途停學。因「故」：原因。", filename: "dropout" },
+                    { term: "11. 病故", definition: "因病去世。", filename: "passed_away" },
+                    { term: "12. 截然不同", definition: "彼此差異非常明顯。「然」：的樣子。", filename: "totally_different" },
+                    { term: "13. 難以言喻", definition: "無法以言語形容。", filename: "indescribable" },
+                    { term: "14. 帽「簷」", definition: "邊緣。", filename: "brim" },
+                    { term: "15. 惺惺相惜", definition: "聰明才智相當的人彼此同情、憐惜。", filename: "mutual_appreciation" },
+                    { term: "16. 瑜亮情結", definition: "形容兩人才情能力相近而有所比較的心理。", filename: "rivalry" },
+                    { term: "17. 一隅", definition: "角、角落。", filename: "corner" },
+                    { term: "18. 同儕", definition: "同輩。", filename: "peer" },
+                    { term: "19. 蒼涼", definition: "淒涼、悲壯。", filename: "desolate" },
+                    { term: "20. 對景悼友", definition: "悲哀、傷感。", filename: "mourning" }
+                ]
+            },
+            shape_sound: {
+                title: "形音義補充",
+                items: [
+                    { char: "1. 嚇", content: "ㄏㄜˋ：(動詞) 用言語怒叱、武力逼迫，使人害怕。如：恐嚇、威嚇、嚇阻犯罪。\nㄒㄧㄚˋ：(動詞) 害怕、使人害怕。如：驚嚇、嚇唬。", filename: "char_scare" },
+                    { char: "2. 赫", content: "ㄏㄜˋ：(形容詞) 顯明、盛大。如：顯赫、赫赫有名。\n(量詞) 頻率單位，「赫茲」的簡稱。如：一千赫。", filename: "char_he" },
+                    { char: "3. 眩", content: "ㄒㄩㄢˋ：(動詞) 眼睛昏花，看東西晃動不定。如：頭暈目眩。\n(動詞) 迷亂。如：以術眩人、眩惑人心。", filename: "char_dizzy" },
+                    { char: "4. 炫", content: "ㄒㄩㄢˋ：(動詞) 閃亮、照耀。通「眩」。如：光彩炫目。\n(動詞) 誇耀、顯示。如：炫耀。", filename: "char_showoff" },
+                    { char: "5. 恫", content: "ㄉㄨㄥˋ：(動詞) 恐嚇。如：恫嚇。", filename: "char_threaten" },
+                    { char: "6. 洞", content: "ㄉㄨㄥˋ：(名詞) 深穴。如：山洞。\n(副詞) 透澈。如：洞察先機。", filename: "char_cave" },
+                    { char: "7. 胴", content: "ㄉㄨㄥˋ：(名詞) 人的軀幹。常用以指女人的軀體。如：胴體。", filename: "char_body" },
+                    { char: "8. 皙", content: "ㄒㄧ：(形容詞) 皮膚白。如：白皙。", filename: "char_pale" },
+                    { char: "9. 晰", content: "ㄒㄧ：(形容詞) 清楚、明白。如：清晰、明晰。", filename: "char_clear" },
+                    { char: "10. 析", content: "ㄒㄧ：(動詞) 剖開、劈開。如：剖心析肝（比喻忠誠不二）。\n(動詞) 分開、離散。如：分崩離析。\n(動詞) 解釋、辨釋。如：解析。", filename: "char_analyze" },
+                    { char: "11. 凌", content: "ㄌㄧㄥˊ：(動詞) 欺侮、侵犯。如：凌辱、凌虐、盛氣凌人。\n(動詞) 接近。如：凌晨。\n(動詞) 雜亂。如：凌亂。\n(動詞) 登、升。如：凌空、壯志凌雲（形容志氣高遠）。\n(動詞) 踰越、超過。如：凌駕。", filename: "char_ling" },
+                    { char: "12. 陵", content: "ㄌㄧㄥˊ：(名詞) 大土山。如：丘陵、山陵、岡陵。\n(名詞) 帝王或偉人的墳墓。如：陵寢、十三陵、中山陵。", filename: "char_tomb" },
+                    { char: "13. 菱", content: "ㄌㄧㄥˊ：(名詞) 植物名。如：菱角。\n(名詞) 四邊相等、兩條對角線互相垂直的平行四邊形。如：菱形。", filename: "char_water_chestnut" },
+                    { char: "14. 稜", content: "ㄌㄥˊ：(名詞) 物體兩面相接的部分。如：稜角、模稜兩可。", filename: "char_edge" },
+                    { char: "15. 故", content: "(名詞)意外的事情、事件。如：變故。\n(名詞)原因、根由。如：不知何故。\n(名詞)好友、舊識。如：一見如故。\n(形容詞)原來的、以前的。如：故鄉、故國。\n(動詞) 死亡。如：病故、身故。", filename: "char_gu" },
+                    { char: "16. 搗", content: "(動詞)擾亂、攪亂。如：搗亂、搗蛋。\n(動詞) 攻擊、攻打。如：直搗黃龍（指直接攻入敵人都城要地）。\n(動詞) 撞擊。如：搗米、搗藥、點頭如搗蒜。", filename: "char_dao" }
+                ],
+                confusing: [
+                    { text: "「刻」畫入微 / 「刻」骨銘心", sounds: "ㄎㄜˋ / ㄎㄜˋ", filename: "sound_ke" },
+                    { text: "「撒」手人寰 / 「撒」野 / 「撒」腿就跑 / 「撒」水", sounds: "ㄙㄚ / ㄙㄚ / ㄙㄚ / ㄙㄚˇ", filename: "sound_sa" },
+                    { text: "「差」強人意 / 鬼使神「差」", sounds: "ㄔㄚ / ㄔㄞ", filename: "sound_cha" },
+                    { text: "「憎」恨 / 「曾」祖父 / 味「噌」 / 樓「層」", sounds: "ㄗㄥ / ㄗㄥ / ㄘㄥ / ㄘㄥˊ", filename: "sound_zeng" },
+                    { text: "臨「摹」 / 按「摩」", sounds: "ㄇㄛˊ / ㄇㄛˊ", filename: "sound_mo" },
+                    { text: "「瀑」布 / 内幕「曝」光", sounds: "ㄆㄨˋ / ㄆㄨˋ", filename: "sound_pu" },
+                    { text: "雕「琢」 / 「琢」磨不透", sounds: "ㄓㄨㄛˊ / ㄓㄨㄛˊ", filename: "sound_zhuo" },
+                    { text: "呀「然」驚恐 / 赫「然」發現 / 理所當「然」", sounds: "……的樣子(助詞) / ……的樣子(助詞) / 如此(代詞)", filename: "sound_ran" },
+                    { text: "「徵」求同意 / 無「徵」不信", sounds: "公開尋求、招請 / 驗證、證明", filename: "sound_zheng" },
+                    { text: "年度「盛」事 / 「盛」氣凌人", sounds: "大規模的 / 強烈的、旺盛的", filename: "sound_sheng" },
+                    { text: "拋「諸」腦後 / 「諸」子百家", sounds: "之於二字的合音 / 各個、眾多", filename: "sound_zhu" },
+                    { text: "「湛」藍天空 / 琴藝精「湛」", sounds: "深厚 / 深厚", filename: "sound_zhan" }
+                ]
+            },
+            idioms: {
+                title: "相關成語補充",
+                friendship: [
+                    { name: "泛泛之交", mean: "普通的交情。", filename: "friend_1" },
+                    { name: "點頭之交", mean: "交情只止於相見時點頭招呼而已，比喻很淡的交情。", filename: "friend_2" },
+                    { name: "萍水相交", mean: "比喻彼此素不相識，因機緣湊巧，結為朋友。", filename: "friend_3" },
+                    { name: "管鮑之交", mean: "比喻友情深厚。", filename: "friend_4" },
+                    { name: "莫逆之交", mean: "心意相投、至好無嫌的朋友。", filename: "friend_5" },
+                    { name: "金石之交", mean: "比喻交情深厚，如金石一般堅固。", filename: "friend_6" },
+                    { name: "金蘭之交", mean: "情意相投的好朋友。", filename: "friend_7" },
+                    { name: "八拜之交", mean: "稱結拜為異姓兄弟姐妹的朋友。", filename: "friend_8" },
+                    { name: "刎頸之交", mean: "比喻可同生共死的至交好友。", filename: "friend_9" },
+                    { name: "布衣之交", mean: "貧賤時所交往的朋友，或比喻患難知己的朋友。", filename: "friend_10" },
+                    { name: "總角之交", mean: "從小便相契要好的朋友。", filename: "friend_11" },
+                    { name: "忘年之交", mean: "不拘年歲行輩而結交為友。", filename: "friend_12" },
+                    { name: "烏集之交", mean: "指以利聚合，不以誠相待的交情。", filename: "friend_13" },
+                    { name: "割席分坐", mean: "比喻和朋友絕交。", filename: "friend_14" },
+                    { name: "推心置腹", mean: "比喻真心誠意地待人。", filename: "friend_15" }
+                ],
+                competition: [
+                    { 
+                        title: "1. 勝利", 
+                        items: [
+                            { name: "十拿九穩", mean: "比喻很有把握。" },
+                            { name: "出奇制勝", mean: "發奇兵或用奇計制敵而獲勝。" },
+                            { name: "先發制人", mean: "凡事先下手取得先機，才能制伏對方。" },
+                            { name: "旗開得勝", mean: "戰旗一張開就得勝，形容一開戰就取得勝利。" },
+                            { name: "勢如破竹", mean: "比喻戰事進展順利，毫無阻礙。" },
+                            { name: "銳不可當", mean: "形容氣勢威猛，所向無敵。" }
+                        ]
+                    },
+                    { 
+                        title: "2. 失敗", 
+                        items: [
+                            { name: "鎩羽而歸", mean: "比喻失意或受挫折而回。" },
+                            { name: "望風披靡", mean: "形容為強大的氣勢所壓倒。" },
+                            { name: "全軍覆沒", mean: "比喻完全喪失或澈底失敗。" },
+                            { name: "一敗塗地", mean: "形容做事失敗，到了無法收拾的地步。" },
+                            { name: "功敗垂成", mean: "指事情在即將成功時卻失敗了。" },
+                            { name: "功虧一簣", mean: "比喻事情只差最後一步，卻因未能堅持到底而前功盡棄。" }
+                        ]
+                    },
+                    { 
+                        title: "3. 平手", 
+                        items: [
+                            { name: "不分軒輊", mean: "相比較的結果，分不出高下。" },
+                            { name: "平分秋色", mean: "形容二者一樣出色，分不出高下。" },
+                            { name: "勢均力敵", mean: "雙方力量情勢相當，不分上下。" },
+                            { name: "旗鼓相當", mean: "兩方軍隊陣容、聲勢不相上下，比喻雙方勢均力敵。" },
+                            { name: "並駕齊驅", mean: "比喻雙方實力相當，不分上下。" }
+                        ]
+                    }
+                ]
+            },
+            structure: {
+                title: "課文結構表",
+                parts: [
+                    { section: "緣起 (1-5段)", title: "個性與偏見", content: "岡本自述自己的個性、興趣和專長，並說明討厭志村的原因。", filename: "struct_origin" },
+                    { section: "開展 (6-9段)", title: "努力與挫敗", content: "岡本為勝過志村付出極大的努力，卻在學生作品展上敗給志村。", filename: "struct_develop" },
+                    { section: "關鍵 (10-12段)", title: "宣洩與振作", content: "岡本宣洩情緒之後重新振作，開始嘗試用粉彩筆作畫。", filename: "struct_key" },
+                    { section: "轉折 (13-18段)", title: "和解與相惜", content: "岡本放下心中的怨恨與志村結為好友，兩人因興趣相投而惺惺相惜。", filename: "struct_turn" },
+                    { section: "尾聲 (19-22段)", title: "緬懷與感傷", content: "岡本長大後得知志村的死訊，在緬懷好友之時，亦感傷物是人非。", filename: "struct_end" }
+                ]
+            },
+            knowledge: {
+                title: "成長小說補充",
+                intro: {
+                    title: "一、成長小說簡介",
+                    content: "成長小說源於十七、十八世紀的歐洲，其名稱起源於德語 Bildungsroman，譯為「塑造小說」、「教育小說」、「成長小說」，流傳至英、美後，中文譯法則有「發展小說」、「教育小說」、「啟蒙小說」、「成長小說」等，是青少年小說研究中很重要的範疇。這類小說以人物心理由青澀到成熟，或由天真到世故的變化為核心關懷，有些在進入社會後，因吃虧、吃苦逐漸明白世道艱難、人心險惡；有些則在經歷某個或某些重大事件後，對人生有了全新的領悟，甚至開始改變自我。在這個「轉大人」的質變完成之時，故事往往同步到達尾聲，結局以不圓滿但尚稱釋然的情況居多，揭示「失去後方能成長」的道理。"
+                },
+                structure_info: {
+                    title: "二、成長小說的架構",
+                    content: "大體而言，成長小說的架構可區分為三個階段：\n\n1. 第一階段是「對立」：主角在故事一開始往往無法融入自身所處的環境，或者對環境心生不滿，他們年輕、天真，對理想充滿憧憬，甚至有點反叛精神，因此會為了尋覓心中的美好世界進入第二階段。\n\n2. 第二階段是「體驗與掙扎」：在這個階段中，主角會在新的生活形態中尋找自己認同的價值，甚至收穫友誼和愛情，只是在得到這些令人喜悅的事物之際，也會陷入與殘酷現實的拉鋸，挫折與考驗接踵而至，強烈地衝擊主角的認知，使其在種種混亂中不停掙扎，感到痛苦、迷茫。\n\n3. 最後一個階段是「和解」：主角經過體驗與掙扎之後，對身邊的一切產生了新的認識，並且在新的世界或生活中找到自己的位置，發展出新的認同，達成與現實的和解，比如成為原先自己所鄙視的世俗之人、不願改變初衷但必須努力調適巨大的失落所帶來的打擊。這三個階段勾畫出啟蒙的過程，同時也使主角在失去某些重要事物後變得獨立、成熟、世故。"
+                },
+                theme: {
+                    title: "三、「畫的哀傷」的成長主題",
+                    content: "在《畫的哀傷》中，摯友死亡的情節是成長小說很重要的主題。岡本歷經嫉恨到放下偏見，終於與志村成為交情深厚的摯友，興趣相投再加上得來不易，使志村在岡本心中有很重要的地位。當岡本從外地回家去找志村時，竟得知志村早已病逝，這個衝擊使他領悟到人生原來有生即有死，有起就有落，「黑暗中也有歡欣，光明裡也有哀傷」意即在此。「死亡」是生命的終點，也是最無法改變的事實。痛失知音的岡本因無力扭轉生死，只能將與志村共度的美好歲月，往記憶深處烙印，並調適自己的悲傷，把情感昇華為對人生更深一層的體悟，成為成熟的大人。而這段因失去而啟蒙的過程，正是成長小說中相當常見的主題。"
+                }
+            }
+        };
+
+        const generateQuestions = () => {
+            const q = [];
+            let id = 1;
+            
+            // --- 1. 注釋 (20題) ---
+            q.push({ id: id++, category: "注釋", question: "「孩提」是指？", options: ["需人提攜、懷抱的幼兒", "頑皮的小孩", "上學的兒童", "剛出生的嬰兒"], answer: "需人提攜、懷抱的幼兒" });
+            q.push({ id: id++, category: "注釋", question: "「盛氣凌人」的意思是？", options: ["用傲慢的氣勢壓迫別人", "生氣的樣子", "非常有禮貌", "氣氛很熱鬧"], answer: "用傲慢的氣勢壓迫別人" });
+            q.push({ id: id++, category: "注釋", question: "「挫」的意思是？", options: ["壓抑、抑制", "折斷", "失敗", "錯誤"], answer: "壓抑、抑制" });
+            q.push({ id: id++, category: "注釋", question: "「臨摹」是指？", options: ["照書畫原樣描摹", "對著風景畫畫", "憑空想像作畫", "用電腦繪圖"], answer: "照書畫原樣描摹" });
+            q.push({ id: id++, category: "注釋", question: "「祕而不宣」的意思是？", options: ["隱瞞所知，不作宣布", "祕密被發現了", "大聲宣傳", "神祕的儀式"], answer: "隱瞞所知，不作宣布" });
+            q.push({ id: id++, category: "注釋", question: "「更勝一籌」的意思是？", options: ["比較之下，較為優秀、出色", "稍微差一些", "完全沒辦法", "運氣比較好"], answer: "比較之下，較為優秀、出色" });
+            q.push({ id: id++, category: "注釋", question: "「一籌莫展」比喻？", options: ["毫無辦法", "稍微高明一些", "計畫周詳", "非常順利"], answer: "毫無辦法" });
+            q.push({ id: id++, category: "注釋", question: "「籠罩」的意思是？", options: ["覆蓋", "燈籠", "保護", "鳥籠"], answer: "覆蓋" });
+            q.push({ id: id++, category: "注釋", question: "「摯友」是指？", options: ["情誼深厚的朋友", "剛認識的朋友", "普通朋友", "酒肉朋友"], answer: "情誼深厚的朋友" });
+            q.push({ id: id++, category: "注釋", question: "「桃李不言，下自成蹊」可形容？", options: ["為人真誠篤實，自然感召人心", "桃花李花很漂亮", "果樹長得很好", "路很難走"], answer: "為人真誠篤實，自然感召人心" });
+            q.push({ id: id++, category: "注釋", question: "「渾然」的意思是？", options: ["全然、完全", "渾濁不清", "圓形的樣子", "糊塗的樣子"], answer: "全然、完全" });
+            q.push({ id: id++, category: "注釋", question: "「輟學」是指？", options: ["中途停學", "畢業", "升學", "轉學"], answer: "中途停學" });
+            q.push({ id: id++, category: "注釋", question: "「截然不同」的「然」意思是？", options: ["……的樣子", "然而", "燃燒", "對的"], answer: "……的樣子" });
+            q.push({ id: id++, category: "注釋", question: "「難以言喻」是指？", options: ["無法以言語形容", "很難說話", "比喻很難懂", "語言不通"], answer: "無法以言語形容" });
+            q.push({ id: id++, category: "注釋", question: "「惺惺相惜」形容？", options: ["聰明才智相當的人彼此同情、憐惜", "假裝可惜", "互相討厭", "星星很亮"], answer: "聰明才智相當的人彼此同情、憐惜" });
+            q.push({ id: id++, category: "注釋", question: "「瑜亮情結」形容？", options: ["兩人才情能力相近而有所比較的心理", "感情很好", "互相幫助", "結拜兄弟"], answer: "兩人才情能力相近而有所比較的心理" });
+            q.push({ id: id++, category: "注釋", question: "「一隅」是指？", options: ["角、角落", "全部", "遇見", "愚笨"], answer: "角、角落" });
+            q.push({ id: id++, category: "注釋", question: "「同儕」是指？", options: ["同輩", "同事", "同學", "同鄉"], answer: "同輩" });
+            q.push({ id: id++, category: "注釋", question: "「蒼涼」的意思是？", options: ["淒涼、悲壯", "蒼老", "涼爽", "廣大"], answer: "淒涼、悲壯" });
+            q.push({ id: id++, category: "注釋", question: "「對景悼友」是指？", options: ["悲哀、傷感", "看風景", "祭拜朋友", "寫信給朋友"], answer: "悲哀、傷感" });
+
+            // --- 2. 形音義 (擴充至30題) ---
+            q.push({ id: id++, category: "形音義", question: "「嚇」阻犯罪的讀音是？", options: ["ㄏㄜˋ", "ㄒㄧㄚˋ", "ㄏㄜˊ", "ㄒㄧㄚ"], answer: "ㄏㄜˋ" });
+            q.push({ id: id++, category: "形音義", question: "顯「赫」的讀音是？", options: ["ㄏㄜˋ", "ㄏㄨㄛˋ", "ㄔ", "ㄕㄜˋ"], answer: "ㄏㄜˋ" });
+            q.push({ id: id++, category: "形音義", question: "頭暈目「眩」的讀音是？", options: ["ㄒㄩㄢˋ", "ㄒㄩㄢˊ", "ㄏㄩㄢˋ", "ㄒㄧㄢˋ"], answer: "ㄒㄩㄢˋ" });
+            q.push({ id: id++, category: "形音義", question: "光彩「炫」目的意思通？", options: ["眩", "旋", "絢", "渲"], answer: "眩" });
+            q.push({ id: id++, category: "形音義", question: "「恫」嚇的讀音是？", options: ["ㄉㄨㄥˋ", "ㄊㄨㄥˊ", "ㄉㄨㄥ", "ㄊㄨㄥˋ"], answer: "ㄉㄨㄥˋ" });
+            q.push({ id: id++, category: "形音義", question: "「胴」體是指？", options: ["人的軀幹", "山洞", "相同的身體", "銅做的物體"], answer: "人的軀幹" });
+            q.push({ id: id++, category: "形音義", question: "白「皙」的讀音是？", options: ["ㄒㄧ", "ㄓㄜˊ", "ㄒㄧˊ", "ㄓㄜ"], answer: "ㄒㄧ" });
+            q.push({ id: id++, category: "形音義", question: "分崩離「析」的「析」意思是？", options: ["分開、離散", "分析", "清楚", "白色"], answer: "分開、離散" });
+            q.push({ id: id++, category: "形音義", question: "壯志「凌」雲的意思是？", options: ["形容志氣高遠", "欺負雲朵", "飛得很高", "天氣不好"], answer: "形容志氣高遠" });
+            q.push({ id: id++, category: "形音義", question: "帝王的墳墓稱為？", options: ["陵寢", "丘陵", "凌寢", "菱角"], answer: "陵寢" });
+            q.push({ id: id++, category: "形音義", question: "模「稜」兩可的讀音是？", options: ["ㄌㄥˊ", "ㄌㄧㄥˊ", "ㄌㄥ", "ㄌㄧㄥ"], answer: "ㄌㄥˊ" });
+            q.push({ id: id++, category: "形音義", question: "「撒」手人寰的讀音是？", options: ["ㄙㄚ", "ㄙㄚˇ", "ㄕㄚ", "ㄕㄚˇ"], answer: "ㄙㄚ" });
+            q.push({ id: id++, category: "形音義", question: "鬼使神「差」的讀音是？", options: ["ㄔㄞ", "ㄔㄚ", "ㄔㄚˋ", "ㄘㄨㄛ"], answer: "ㄔㄞ" });
+            q.push({ id: id++, category: "形音義", question: "雕「琢」的讀音是？", options: ["ㄓㄨㄛˊ", "ㄓㄨㄛ", "ㄗㄨㄛˊ", "ㄓㄨˊ"], answer: "ㄓㄨㄛˊ" });
+            q.push({ id: id++, category: "形音義", question: "赫「然」發現的「然」意思是？", options: ["……的樣子", "然而", "燃燒", "對的"], answer: "……的樣子" });
+            
+            // 新增形音義補充題目
+            q.push({ id: id++, category: "形音義", question: "清「晰」的讀音是？", options: ["ㄒㄧ", "ㄓㄜˊ", "ㄒㄧˊ", "ㄓㄜ"], answer: "ㄒㄧ" });
+            q.push({ id: id++, category: "形音義", question: "「菱」角的讀音是？", options: ["ㄌㄧㄥˊ", "ㄌㄥˊ", "ㄌㄧㄥ", "ㄌㄥ"], answer: "ㄌㄧㄥˊ" });
+            q.push({ id: id++, category: "形音義", question: "「故」鄉的「故」意思是？", options: ["原來的、以前的", "原因", "死亡", "朋友"], answer: "原來的、以前的" });
+            q.push({ id: id++, category: "形音義", question: "一見如「故」的「故」意思是？", options: ["好友、舊識", "原因", "死亡", "事故"], answer: "好友、舊識" });
+            q.push({ id: id++, category: "形音義", question: "「搗」蛋的讀音是？", options: ["ㄉㄠˇ", "ㄉㄠˋ", "ㄋㄠˇ", "ㄓㄨㄛˊ"], answer: "ㄉㄠˇ" });
+            q.push({ id: id++, category: "形音義", question: "直「搗」黃龍的意思是？", options: ["攻擊、攻打", "攪拌", "搗藥", "迷路"], answer: "攻擊、攻打" });
+            q.push({ id: id++, category: "形音義", question: "「憎」恨的讀音是？", options: ["ㄗㄥ", "ㄗㄥˋ", "ㄘㄥ", "ㄗㄣ"], answer: "ㄗㄥ" });
+            q.push({ id: id++, category: "形音義", question: "臨「摹」的讀音是？", options: ["ㄇㄛˊ", "ㄇㄛ", "ㄇㄨˋ", "ㄇㄚˊ"], answer: "ㄇㄛˊ" });
+            q.push({ id: id++, category: "形音義", question: "「瀑」布的讀音是？", options: ["ㄆㄨˋ", "ㄅㄠˋ", "ㄆㄨ", "ㄅㄠ"], answer: "ㄆㄨˋ" });
+            q.push({ id: id++, category: "形音義", question: "無「徵」不信的「徵」意思是？", options: ["驗證、證明", "徵求", "象徵", "微小"], answer: "驗證、證明" });
+            q.push({ id: id++, category: "形音義", question: "「盛」氣凌人的「盛」意思是？", options: ["強烈的、旺盛的", "裝東西", "盛大", "茂盛"], answer: "強烈的、旺盛的" });
+            q.push({ id: id++, category: "形音義", question: "拋「諸」腦後的「諸」是哪二字的合音？", options: ["之於", "之乎", "者也", "主與"], answer: "之於" });
+            q.push({ id: id++, category: "形音義", question: "精「湛」的讀音是？", options: ["ㄓㄢˋ", "ㄕㄣˋ", "ㄎㄢ", "ㄗㄢˋ"], answer: "ㄓㄢˋ" });
+            q.push({ id: id++, category: "形音義", question: "下列哪一個「故」字解釋為「死亡」？", options: ["病故", "故鄉", "緣故", "一見如故"], answer: "病故" });
+            q.push({ id: id++, category: "形音義", question: "下列讀音何者正確？", options: ["味噌 (ㄘㄥ)", "樓層 (ㄘㄥ)", "曾 (ㄗㄥ) 祖父", "增加 (ㄘㄥ)"], answer: "味噌 (ㄘㄥ)" });
+
+            // --- 3. 成語 (擴充至全部32題) ---
+            q.push({ id: id++, category: "成語", question: "「管鮑之交」比喻？", options: ["友情深厚", "普通交情", "互相利用", "絕交"], answer: "友情深厚" });
+            q.push({ id: id++, category: "成語", question: "「刎頸之交」比喻？", options: ["可同生共死的至交好友", "點頭之交", "酒肉朋友", "互相競爭"], answer: "可同生共死的至交好友" });
+            q.push({ id: id++, category: "成語", question: "「忘年之交」是指？", options: ["不拘年歲行輩而結交", "忘記年齡", "老年人的朋友", "童年玩伴"], answer: "不拘年歲行輩而結交" });
+            q.push({ id: id++, category: "成語", question: "「割席分坐」比喻？", options: ["和朋友絕交", "感情很好", "分享座位", "一起讀書"], answer: "和朋友絕交" });
+            q.push({ id: id++, category: "成語", question: "「推心置腹」比喻？", options: ["真心誠意地待人", "推卸責任", "心腹之患", "腹背受敵"], answer: "真心誠意地待人" });
+            q.push({ id: id++, category: "成語", question: "「十拿九穩」比喻？", options: ["很有把握", "很不穩定", "拿很多東西", "運氣不好"], answer: "很有把握" });
+            q.push({ id: id++, category: "成語", question: "「勢如破竹」比喻？", options: ["戰事進展順利，毫無阻礙", "竹子破了", "氣勢很弱", "破壞環境"], answer: "戰事進展順利，毫無阻礙" });
+            q.push({ id: id++, category: "成語", question: "「鎩羽而歸」比喻？", options: ["失意或受挫折而回", "凱旋而歸", "羽毛掉光", "飛行很快"], answer: "失意或受挫折而回" });
+            q.push({ id: id++, category: "成語", question: "「功虧一簣」比喻？", options: ["事情只差最後一步而失敗", "成功在望", "功勞很大", "虧損很多"], answer: "事情只差最後一步而失敗" });
+            q.push({ id: id++, category: "成語", question: "「不分軒輊」的意思是？", options: ["分不出高下", "勝負已定", "車子壞了", "輕重不分"], answer: "分不出高下" });
+            q.push({ id: id++, category: "成語", question: "下列何者「不是」形容失敗？", options: ["旗開得勝", "全軍覆沒", "一敗塗地", "望風披靡"], answer: "旗開得勝" });
+            q.push({ id: id++, category: "成語", question: "下列何者形容「平手」？", options: ["並駕齊驅", "銳不可當", "出奇制勝", "先發制人"], answer: "並駕齊驅" });
+            q.push({ id: id++, category: "成語", question: "「泛泛之交」是指？", options: ["普通的交情", "很好的朋友", "壞朋友", "網路朋友"], answer: "普通的交情" });
+            q.push({ id: id++, category: "成語", question: "「烏集之交」是指？", options: ["以利聚合，不以誠相待", "像烏鴉一樣黑", "晚上聚會", "很久沒見"], answer: "以利聚合，不以誠相待" });
+            q.push({ id: id++, category: "成語", question: "「總角之交」是指？", options: ["從小相契要好的朋友", "頭髮綁角的朋友", "總共有幾個朋友", "角落的朋友"], answer: "從小相契要好的朋友" });
+            
+            // 新增成語補充題目
+            q.push({ id: id++, category: "成語", question: "「點頭之交」比喻？", options: ["很淡的交情", "很好的朋友", "同意對方的意見", "經常見面"], answer: "很淡的交情" });
+            q.push({ id: id++, category: "成語", question: "「萍水相交」比喻？", options: ["素不相識因機緣結為朋友", "在水邊認識", "很深厚的交情", "朋友像浮萍一樣"], answer: "素不相識因機緣結為朋友" });
+            q.push({ id: id++, category: "成語", question: "「莫逆之交」是指？", options: ["心意相投、至好無嫌的朋友", "互相違逆", "普通朋友", "長輩與晚輩"], answer: "心意相投、至好無嫌的朋友" });
+            q.push({ id: id++, category: "成語", question: "「金石之交」比喻？", options: ["交情深厚如金石般堅固", "很有錢的朋友", "做珠寶生意", "鐵石心腸"], answer: "交情深厚如金石般堅固" });
+            q.push({ id: id++, category: "成語", question: "「金蘭之交」是指？", options: ["情意相投的好朋友", "結拜姊妹", "喜歡蘭花的朋友", "有錢的朋友"], answer: "情意相投的好朋友" });
+            q.push({ id: id++, category: "成語", question: "「八拜之交」是指？", options: ["結拜為異姓兄弟姐妹", "拜了八次", "點頭之交", "很客氣的朋友"], answer: "結拜為異姓兄弟姐妹" });
+            q.push({ id: id++, category: "成語", question: "「布衣之交」是指？", options: ["貧賤時或患難知己的朋友", "做衣服的朋友", "很窮的朋友", "普通朋友"], answer: "貧賤時或患難知己的朋友" });
+            q.push({ id: id++, category: "成語", question: "「出奇制勝」的意思是？", options: ["發奇兵或用奇計制敵而獲勝", "運氣好贏了", "奇怪的勝利", "製作精良"], answer: "發奇兵或用奇計制敵而獲勝" });
+            q.push({ id: id++, category: "成語", question: "「先發制人」的意思是？", options: ["先下手取得先機以制伏對方", "先發現的人", "製作假人", "後來居上"], answer: "先下手取得先機以制伏對方" });
+            q.push({ id: id++, category: "成語", question: "「銳不可當」形容？", options: ["氣勢威猛，所向無敵", "刀子很利", "無法抵擋", "運氣很好"], answer: "氣勢威猛，所向無敵" });
+            q.push({ id: id++, category: "成語", question: "「望風披靡」形容？", options: ["為強大的氣勢所壓倒", "風景優美", "風很大", "喜歡跟風"], answer: "為強大的氣勢所壓倒" });
+            q.push({ id: id++, category: "成語", question: "「全軍覆沒」比喻？", options: ["完全喪失或澈底失敗", "軍隊全部淹死", "全部都是軍人", "勝利歸來"], answer: "完全喪失或澈底失敗" });
+            q.push({ id: id++, category: "成語", question: "「一敗塗地」形容？", options: ["做事失敗到了無法收拾的地步", "跌倒在地上", "把地弄髒了", "輸了一次"], answer: "做事失敗到了無法收拾的地步" });
+            q.push({ id: id++, category: "成語", question: "「功敗垂成」的意思是？", options: ["事情在即將成功時卻失敗了", "成功了", "功勞很大", "失敗為成功之母"], answer: "事情在即將成功時卻失敗了" });
+            q.push({ id: id++, category: "成語", question: "「平分秋色」形容？", options: ["二者一樣出色，分不出高下", "秋天的景色", "平分財產", "顏色很像"], answer: "二者一樣出色，分不出高下" });
+            q.push({ id: id++, category: "成語", question: "「勢均力敵」的意思是？", options: ["雙方力量情勢相當", "力量懸殊", "勢利眼", "敵人很多"], answer: "雙方力量情勢相當" });
+            q.push({ id: id++, category: "成語", question: "「旗鼓相當」比喻？", options: ["雙方勢均力敵", "樂器很好聽", "旗子跟鼓一樣多", "非常熱鬧"], answer: "雙方勢均力敵" });
+
+            // --- 4. 成長小說與結構 (12題) ---
+            q.push({ id: id++, category: "成長小說", question: "成長小說起源於哪裡？", options: ["歐洲 (德語)", "美國", "中國", "日本"], answer: "歐洲 (德語)" });
+            q.push({ id: id++, category: "成長小說", question: "成長小說的核心關懷是？", options: ["人物心理由青澀到成熟的變化", "冒險故事", "愛情故事", "歷史事件"], answer: "人物心理由青澀到成熟的變化" });
+            q.push({ id: id++, category: "成長小說", question: "成長小說的架構第一階段是？", options: ["對立", "體驗", "掙扎", "和解"], answer: "對立" });
+            q.push({ id: id++, category: "成長小說", question: "成長小說的架構最後一個階段是？", options: ["和解", "對立", "體驗", "掙扎"], answer: "和解" });
+            q.push({ id: id++, category: "成長小說", question: "在《畫的哀傷》中，哪個情節是成長的重要主題？", options: ["摯友死亡", "獲得獎項", "轉學", "出國深造"], answer: "摯友死亡" });
+            q.push({ id: id++, category: "成長小說", question: "岡本得知志村死訊後，領悟到什麼？", options: ["人生有生即有死，光明裡也有哀傷", "畫畫沒有意義", "要趕快成名", "不想再交朋友"], answer: "人生有生即有死，光明裡也有哀傷" });
+            q.push({ id: id++, category: "成長小說", question: "本課結構中，「緣起」段落主要描述？", options: ["岡本的個性與討厭志村的原因", "兩人成為好友", "志村得獎", "岡本長大後"], answer: "岡本的個性與討厭志村的原因" });
+            q.push({ id: id++, category: "成長小說", question: "本課結構中，「轉折」段落主要描述？", options: ["岡本放下怨恨與志村結為好友", "岡本痛扁志村", "志村轉學", "岡本放棄畫畫"], answer: "岡本放下怨恨與志村結為好友" });
+            q.push({ id: id++, category: "成長小說", question: "成長小說的結局通常是？", options: ["不圓滿但尚稱釋然", "從此過著幸福快樂的日子", "悲慘的悲劇", "開放式結局"], answer: "不圓滿但尚稱釋然" });
+            q.push({ id: id++, category: "成長小說", question: "「Bildungsroman」是指？", options: ["成長小說 (教育小說)", "科幻小說", "偵探小說", "武俠小說"], answer: "成長小說 (教育小說)" });
+            q.push({ id: id++, category: "成長小說", question: "課文結構中，「關鍵」段落(10-12段)發生了什麼事？", options: ["岡本宣洩情緒後嘗試用粉彩筆作畫", "志村轉學了", "岡本決定放棄畫畫", "兩人打了一架"], answer: "岡本宣洩情緒後嘗試用粉彩筆作畫" });
+            q.push({ id: id++, category: "成長小說", question: "課文結構中，「尾聲」段落(19-22段)描述了什麼？", options: ["岡本得知志村死訊並感傷緬懷", "兩人一起舉辦畫展", "岡本成為世界名畫家", "志村病好了"], answer: "岡本得知志村死訊並感傷緬懷" });
+
+            // 隨機打亂選項
+            const shuffleArray = (array) => {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            };
+
+            q.forEach(item => {
+                item.options = shuffleArray(item.options);
+            });
+
+            return q;
+        };
+
+        const ALL_QUESTIONS = generateQuestions(); 
+
+        const playSound = (type) => {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                const now = ctx.currentTime;
+                if (type === 'correct') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(523.25, now);
+                    osc.frequency.setValueAtTime(659.25, now + 0.1);
+                    osc.frequency.setValueAtTime(783.99, now + 0.2);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                    osc.start(now);
+                    osc.stop(now + 0.5);
+                } else {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(150, now);
+                    osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                }
+            } catch (e) { console.error(e); }
+        };
+
+        const Confetti = () => {
+            const colors = ['#F97316', '#EF4444', '#F59E0B', '#EC4899', '#FB923C', '#FCD34D'];
+            const pieces = Array.from({ length: 50 }).map((_, i) => ({
+                id: i, left: Math.random() * 100 + '%', animationDelay: Math.random() * 0.5 + 's', backgroundColor: colors[Math.floor(Math.random() * colors.length)], rotation: Math.random() * 360 + 'deg'
+            }));
+            return (
+                <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+                    {pieces.map((p) => (
+                        <div key={p.id} className="absolute w-3 h-3 md:w-4 md:h-4 opacity-0 animate-confetti" style={{ left: p.left, top: '-20px', backgroundColor: p.backgroundColor, transform: `rotate(${p.rotation})`, animation: `fall 2.5s ease-out forwards ${p.animationDelay}` }} />
+                    ))}
+                    <style>{`@keyframes fall { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(720deg); opacity: 0; } }`}</style>
+                </div>
+            );
+        };
+
+        const LoadingScreen = () => (
+            <div className="flex flex-col items-center justify-center h-screen bg-stone-50">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mb-4"></div>
+                <p className="text-stone-600">載入中...</p>
+            </div>
+        );
+
+        // --- Auth & Dashboard Components ---
+        const AuthScreen = ({ onLogin }) => {
+            const [name, setName] = useState('');
+            const [savedName, setSavedName] = useState('');
+
+            useEffect(() => {
+                const user = LocalDB.getUser();
+                if (user && user.displayName) {
+                    setSavedName(user.displayName);
+                }
+            }, []);
+
+            const handleLogin = (e, forcedName) => {
+                if (e) e.preventDefault();
+                const loginName = forcedName || name;
+                if (!loginName.trim()) return;
+                
+                const user = LocalDB.saveUser(loginName);
+                onLogin(user);
+            };
+
+            const handleQuickLogin = () => {
+                const randomNum = Math.floor(Math.random() * 1000);
+                const user = LocalDB.saveUser(`訪客 ${randomNum}`);
+                onLogin(user);
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-cyan-100 to-blue-100 flex items-center justify-center p-4">
+                    <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border-t-4 border-cyan-500">
+                        <div className="text-center mb-8">
+                            <Droplets className="w-16 h-16 text-cyan-600 mx-auto mb-4" />
+                            <h1 className="text-3xl font-bold text-stone-800">畫的哀傷</h1>
+                            <p className="text-stone-500 mt-2">第十課 互動式學習 App</p>
+                        </div>
+                        
+                        {savedName && (
+                            <div className="mb-6">
+                                <button onClick={() => handleLogin(null, savedName)} className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 text-white py-4 rounded-xl font-bold hover:from-cyan-600 hover:to-blue-600 transition shadow-lg shadow-cyan-200 flex items-center justify-center group">
+                                    <Sparkles className="w-5 h-5 mr-2 animate-pulse text-yellow-200" />
+                                    <span>以 {savedName} 繼續學習</span>
+                                    <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition" />
+                                </button>
+                                <div className="text-center mt-3">
+                                    <button onClick={() => { setSavedName(''); LocalDB.clearUser(); }} className="text-xs text-stone-400 hover:text-stone-600 underline">這不是我，切換帳號</button>
+                                </div>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleLogin} className={`space-y-4 ${savedName ? 'hidden' : ''}`}>
+                            <div>
+                                <label className="block text-sm font-medium text-stone-700 mb-1">請輸入您的姓名</label>
+                                <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full px-4 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:outline-none" placeholder="Ex: 王小明" />
+                            </div>
+                            <button type="submit" disabled={!name.trim()} className="w-full bg-cyan-600 text-white py-3 rounded-lg font-semibold hover:bg-cyan-700 transition disabled:opacity-50">
+                                開始學習
+                            </button>
+                        </form>
+                        
+                        <div className={`mt-4 flex items-center justify-between ${savedName ? 'hidden' : ''}`}>
+                            <div className="h-px bg-stone-200 flex-1"></div><span className="text-sm text-stone-400 px-2">或</span><div className="h-px bg-stone-200 flex-1"></div>
+                        </div>
+                        <button onClick={handleQuickLogin} className={`mt-4 w-full bg-stone-50 border-2 border-stone-200 text-stone-600 py-3 rounded-lg font-semibold hover:bg-stone-100 transition flex items-center justify-center ${savedName ? 'hidden' : ''}`}>
+                            <Zap className="w-5 h-5 mr-2 text-yellow-500" /> 快速體驗 (免輸入姓名)
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const Dashboard = ({ user, onLogout, onNavigate }) => {
+            return (
+                <div className="p-6 max-w-4xl mx-auto space-y-6">
+                    <header className="flex justify-between items-center mb-8">
+                        <div>
+                            <h1 className="text-2xl font-bold text-stone-800">歡迎回來，{user.displayName || "同學"}</h1>
+                            <p className="text-stone-500">準備好探索「畫的哀傷」了嗎？</p>
+                        </div>
+                        <button onClick={onLogout} className="text-stone-500 hover:text-red-500 flex items-center">
+                            <LogOut className="w-6 h-6 mr-1" /> <span className="text-sm">登出</span>
+                        </button>
+                    </header>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <button onClick={() => onNavigate('learn')} className="bg-white p-6 rounded-2xl shadow-md hover:shadow-lg transition group border-l-4 border-cyan-500 text-left col-span-1 md:col-span-2">
+                            <div className="flex items-center space-x-4 mb-2">
+                                <div className="bg-cyan-100 p-3 rounded-full group-hover:bg-cyan-200 transition"><BookOpen className="w-8 h-8 text-cyan-600" /></div>
+                                <h2 className="text-xl font-bold text-stone-800">進入學習介面</h2>
+                            </div>
+                            <p className="text-stone-500 pl-16">瀏覽注釋、形音義、成語典故與成長小說補充。</p>
+                        </button>
+                        
+                        {/* 測驗區塊 */}
+                        <div className="col-span-1 md:col-span-2 bg-stone-50 border-2 border-dashed border-stone-200 rounded-2xl p-4">
+                            <h3 className="text-lg font-bold text-stone-600 mb-3 flex items-center"><Scale className="w-5 h-5 mr-2" /> 測驗挑戰區</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <button onClick={() => onNavigate('quiz_setup')} className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition group border-l-4 border-emerald-500 text-left">
+                                    <div className="flex items-center space-x-3 mb-1">
+                                        <div className="bg-emerald-100 p-2 rounded-full group-hover:bg-emerald-200 transition"><PenTool className="w-6 h-6 text-emerald-600" /></div>
+                                        <h2 className="text-lg font-bold text-stone-800">一般測驗</h2>
+                                    </div>
+                                    <p className="text-sm text-stone-500 pl-12">逐題作答，適合詳細練習。</p>
+                                </button>
+                                
+                                <button onClick={() => onNavigate('quick_quiz')} className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition group border-l-4 border-amber-500 text-left">
+                                    <div className="flex items-center space-x-3 mb-1">
+                                        <div className="bg-amber-100 p-2 rounded-full group-hover:bg-amber-200 transition"><FastForward className="w-6 h-6 text-amber-600" /></div>
+                                        <h2 className="text-lg font-bold text-stone-800">快速測驗</h2>
+                                    </div>
+                                    <p className="text-sm text-stone-500 pl-12">列表模式，即時回饋刷題。</p>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4 mt-8">
+                        <button onClick={() => onNavigate('history')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center hover:bg-stone-50 transition">
+                            <History className="w-6 h-6 text-orange-500 mb-2" /><span className="text-sm font-medium text-stone-700">測驗紀錄</span>
+                        </button>
+                        <button onClick={() => onNavigate('mistakes')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center hover:bg-stone-50 transition">
+                            <AlertCircle className="w-6 h-6 text-red-500 mb-2" /><span className="text-sm font-medium text-stone-700">錯題本</span>
+                        </button>
+                        <button onClick={() => onNavigate('favorites')} className="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center justify-center hover:bg-stone-50 transition">
+                            <Heart className="w-6 h-6 text-rose-500 mb-2" /><span className="text-sm font-medium text-stone-700">題目收藏</span>
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- LearningModule with Local Images ---
+        const LearningModule = ({ onBack }) => {
+            const [activeTab, setActiveTab] = useState('intro'); 
+            
+            const tabs = [
+                { id: 'intro', label: '注釋補充' },
+                { id: 'shape_sound', label: '形音義' },
+                { id: 'idioms', label: '成語補充' },
+                { id: 'structure', label: '課文結構' },
+                { id: 'knowledge', label: '成長小說' },
+            ];
+
+            // Render local image section (if filenames provided later)
+            const renderImageSection = (item) => {
+                // Future implementation if images are added
+                return null; 
+            };
+
+            return (
+                <div className="h-full flex flex-col">
+                    <div className="bg-white shadow-sm border-b px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+                        <div className="flex items-center">
+                            <button onClick={onBack} className="flex items-center text-stone-600 hover:text-cyan-600">
+                                <ArrowLeft className="w-5 h-5 mr-1" /> 返回
+                            </button>
+                            <div className="w-4"></div>
+                            <h2 className="font-bold text-lg text-stone-800 hidden md:block">學習重點</h2>
+                        </div>
+                    </div>
+                    
+                    <div className="flex overflow-x-auto bg-stone-50 px-2 py-2 gap-2 sticky top-14 z-10 border-b">
+                        {tabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition ${
+                                    activeTab === tab.id 
+                                        ? 'bg-cyan-600 text-white shadow-md' 
+                                        : 'bg-white text-stone-600 hover:bg-cyan-50 border border-stone-200'
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-stone-100 pb-20">
+                        <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-sm p-6 min-h-[500px]">
+                            
+                            {activeTab === 'intro' && (
+                                <div className="space-y-6">
+                                    <h3 className="text-2xl font-bold text-stone-800 border-b pb-2">{STUDY_CONTENT.intro.title}</h3>
+                                    <div className="grid gap-6">
+                                        {STUDY_CONTENT.intro.items.map((item, i) => (
+                                            <div key={i} className="border border-stone-200 rounded-xl p-5 hover:shadow-md transition bg-white">
+                                                <h4 className="font-bold text-xl text-cyan-700 mb-2">{item.term}</h4>
+                                                <p className="text-stone-700 mb-3 text-lg leading-relaxed whitespace-pre-wrap">{item.definition}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'shape_sound' && (
+                                <div className="space-y-8">
+                                    <h3 className="text-2xl font-bold text-stone-800 border-b pb-2">{STUDY_CONTENT.shape_sound.title}</h3>
+                                    
+                                    <div>
+                                        <h4 className="text-lg font-bold text-purple-700 mb-3 bg-purple-50 p-2 rounded w-fit">字義與讀音辨析</h4>
+                                        <div className="grid gap-4">
+                                            {STUDY_CONTENT.shape_sound.items.map((item, i) => (
+                                                <div key={i} className="bg-white border border-purple-100 p-4 rounded-lg shadow-sm">
+                                                    <div className="flex items-center mb-2">
+                                                        <span className="text-xl font-bold text-purple-800 mr-3 border-r pr-3 border-purple-200">{item.char}</span>
+                                                    </div>
+                                                    <p className="text-stone-700 whitespace-pre-wrap leading-relaxed">{item.content}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <h4 className="text-lg font-bold text-rose-700 mb-3 bg-rose-50 p-2 rounded w-fit">字音辨析 (同音/形近)</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {STUDY_CONTENT.shape_sound.confusing.map((item, i) => (
+                                                <div key={i} className="flex flex-col bg-white border border-stone-200 p-3 rounded-lg">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span className="font-medium text-stone-800">{item.text}</span>
+                                                        <span className="text-sm font-mono text-rose-600 bg-rose-50 px-2 py-1 rounded">{item.sounds}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'idioms' && (
+                                <div className="space-y-8">
+                                    <h3 className="text-2xl font-bold text-stone-800 border-b pb-2">{STUDY_CONTENT.idioms.title}</h3>
+                                    
+                                    <div>
+                                        <h4 className="text-lg font-bold text-amber-700 mb-3 bg-amber-50 p-2 rounded w-fit flex items-center"><Users className="w-5 h-5 mr-2"/> (一) 與「交情」有關的成語</h4>
+                                        <div className="grid gap-4">
+                                            {STUDY_CONTENT.idioms.friendship.map((item, i) => (
+                                                <div key={i} className="bg-white border border-amber-100 p-5 rounded-xl shadow-sm">
+                                                    <h5 className="font-bold text-lg text-amber-900 mb-2">{item.name}</h5>
+                                                    <p className="text-stone-700 mb-2">{item.mean}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <h4 className="text-lg font-bold text-blue-700 mb-3 bg-blue-50 p-2 rounded w-fit flex items-center"><Trophy className="w-5 h-5 mr-2"/> (二) 與「競賽結果」有關的成語</h4>
+                                        <div className="space-y-6">
+                                            {STUDY_CONTENT.idioms.competition.map((category, i) => (
+                                                <div key={i}>
+                                                     <h5 className="font-bold text-md text-stone-600 mb-3 border-b border-stone-200 pb-1">{category.title}</h5>
+                                                     <div className="grid gap-4">
+                                                         {category.items.map((item, j) => (
+                                                             <div key={j} className="bg-white border border-blue-100 p-4 rounded-xl shadow-sm">
+                                                                 <div className="flex items-center">
+                                                                     <span className="font-bold text-blue-900 mr-2">{item.name}</span>
+                                                                     <span className="text-stone-400 mx-2">|</span>
+                                                                     <span className="text-stone-700">{item.mean}</span>
+                                                                 </div>
+                                                             </div>
+                                                         ))}
+                                                     </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'structure' && (
+                                <div className="space-y-6">
+                                    <h3 className="text-2xl font-bold text-stone-800 border-b pb-2">{STUDY_CONTENT.structure.title}</h3>
+                                    <div className="space-y-6">
+                                        {STUDY_CONTENT.structure.parts.map((part, i) => (
+                                            <div key={i} className="flex flex-col md:flex-row gap-4 bg-white border border-stone-200 p-6 rounded-xl shadow-sm hover:shadow-md transition">
+                                                <div className="flex-1">
+                                                    <span className="inline-block px-3 py-1 bg-stone-800 text-white text-xs rounded-full mb-3">{part.section}</span>
+                                                    <h4 className="text-xl font-bold text-stone-900 mb-2">{part.title}</h4>
+                                                    <p className="text-stone-600 leading-relaxed text-lg">{part.content}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'knowledge' && (
+                                <div className="space-y-8">
+                                    <h3 className="text-2xl font-bold text-stone-800 border-b pb-2">{STUDY_CONTENT.knowledge.title}</h3>
+                                    
+                                    <div className="bg-green-50/50 p-5 rounded-xl border border-green-100">
+                                        <h4 className="text-lg font-bold text-green-800 mb-3">{STUDY_CONTENT.knowledge.intro.title}</h4>
+                                        <p className="text-stone-700 leading-relaxed whitespace-pre-wrap">{STUDY_CONTENT.knowledge.intro.content}</p>
+                                    </div>
+
+                                    <div className="bg-white border border-stone-200 p-5 rounded-xl shadow-sm">
+                                        <h4 className="text-lg font-bold text-stone-800 mb-3">{STUDY_CONTENT.knowledge.structure_info.title}</h4>
+                                        <p className="text-stone-600 leading-relaxed whitespace-pre-wrap">{STUDY_CONTENT.knowledge.structure_info.content}</p>
+                                    </div>
+
+                                    <div className="bg-teal-50 p-5 rounded-xl border-l-4 border-teal-500">
+                                        <h4 className="text-lg font-bold text-teal-800 mb-3">{STUDY_CONTENT.knowledge.theme.title}</h4>
+                                        <p className="text-stone-700 leading-relaxed whitespace-pre-wrap">{STUDY_CONTENT.knowledge.theme.content}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const FullQuizModule = ({ user, onBack, onComplete }) => {
+            const [selectedCategory, setSelectedCategory] = useState(null); 
+            const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+            const [answers, setAnswers] = useState({});
+            const [favorites, setFavorites] = useState(new Set());
+            const [questions, setQuestions] = useState([]);
+            const [isAnswered, setIsAnswered] = useState(false);
+            const [showConfetti, setShowConfetti] = useState(false);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [hasSavedSession, setHasSavedSession] = useState(false);
+
+            // Init Check for Saved Session
+            useEffect(() => {
+                const saved = LocalDB.getProgress(STORAGE_KEYS.QUIZ_PROGRESS_FULL);
+                if (saved && saved.questions && saved.questions.length > 0) {
+                    setHasSavedSession(true);
+                }
+            }, []);
+
+            // Auto-save when state changes (if a quiz is active)
+            useEffect(() => {
+                if (selectedCategory && questions.length > 0) {
+                    LocalDB.saveProgress(STORAGE_KEYS.QUIZ_PROGRESS_FULL, {
+                        selectedCategory,
+                        questions,
+                        currentQuestionIndex,
+                        answers
+                    });
+                }
+            }, [selectedCategory, questions, currentQuestionIndex, answers]);
+
+            useEffect(() => {
+                if (!selectedCategory) return;
+                
+                // Only load new questions if we aren't resuming (resuming sets state directly)
+                if (questions.length === 0) {
+                    let filtered = [...ALL_QUESTIONS];
+                    if (selectedCategory !== 'all') {
+                        filtered = filtered.filter(q => q.category === selectedCategory);
+                    }
+                    filtered = filtered.sort(() => 0.5 - Math.random());
+                    setQuestions(filtered);
+                    setCurrentQuestionIndex(0);
+                    setAnswers({});
+                    setIsAnswered(false);
+                }
+            }, [selectedCategory]);
+
+            useEffect(() => {
+                const favSet = LocalDB.getFavorites();
+                const intSet = new Set(Array.from(favSet).map(id => parseInt(id)));
+                setFavorites(intSet);
+            }, []);
+
+            const handleResume = () => {
+                const saved = LocalDB.getProgress(STORAGE_KEYS.QUIZ_PROGRESS_FULL);
+                if (saved) {
+                    setQuestions(saved.questions);
+                    setAnswers(saved.answers);
+                    setCurrentQuestionIndex(saved.currentQuestionIndex);
+                    setSelectedCategory(saved.selectedCategory);
+                    
+                    // Determine if current question is already answered
+                    if (saved.answers[saved.questions[saved.currentQuestionIndex].id]) {
+                        setIsAnswered(true);
+                    }
+                }
+            };
+
+            const toggleFavorite = (qId) => {
+                const newFavs = LocalDB.toggleFavorite(qId);
+                const intSet = new Set(Array.from(newFavs).map(id => parseInt(id)));
+                setFavorites(intSet);
+            };
+
+            const handleAnswer = (option) => {
+                if (isAnswered) return; 
+                const currentQ = questions[currentQuestionIndex];
+                const isCorrect = option === currentQ.answer;
+                setAnswers(prev => ({ ...prev, [currentQ.id]: option }));
+                setIsAnswered(true);
+                if (isCorrect) {
+                    playSound('correct');
+                    setShowConfetti(true);
+                    setTimeout(() => setShowConfetti(false), 2500);
+                } else {
+                    playSound('incorrect');
+                }
+            };
+
+            const handleSubmit = () => {
+                if (isSubmitting) return; 
+                setIsSubmitting(true);
+                try {
+                    let score = 0;
+                    const details = questions.map(q => {
+                        const isCorrect = answers[q.id] === q.answer;
+                        if (isCorrect) score += 1;
+                        return {
+                            id: q.id,
+                            question: q.question,
+                            userAnswer: answers[q.id],
+                            correctAnswer: q.answer,
+                            isCorrect,
+                            options: q.options,
+                            category: q.category
+                        };
+                    });
+                    
+                    LocalDB.addHistory({
+                        score: Math.round((score / questions.length) * 100),
+                        total: questions.length,
+                        category: selectedCategory === 'all' ? '綜合挑戰' : selectedCategory,
+                        details: details
+                    });
+
+                    for (const detail of details) {
+                        if (!detail.isCorrect) {
+                            LocalDB.addMistake({
+                                id: detail.id,
+                                question: detail.question,
+                                answer: detail.correctAnswer,
+                                category: detail.category
+                            });
+                        }
+                    }
+
+                    // Clear progress on completion
+                    LocalDB.clearProgress(STORAGE_KEYS.QUIZ_PROGRESS_FULL);
+
+                    onComplete({ score: Math.round((score / questions.length) * 100), details });
+                } catch (error) {
+                    console.error(error);
+                    alert("儲存成績時發生錯誤");
+                    setIsSubmitting(false); 
+                }
+            };
+
+            if (!selectedCategory) {
+                // Categories for Lesson 10
+                const categories = [
+                    { id: '注釋', label: '注釋補充', icon: <BookOpen className="w-6 h-6 text-blue-500"/>, desc: '課文重點詞語與解釋' },
+                    { id: '形音義', label: '形音義', icon: <PenTool className="w-6 h-6 text-purple-500"/>, desc: '字音辨析與形似字' },
+                    { id: '成語', label: '成語補充', icon: <List className="w-6 h-6 text-amber-500"/>, desc: '交情與競賽相關成語' },
+                    { id: '成長小說', label: '成長小說', icon: <Book className="w-6 h-6 text-green-500"/>, desc: '成長小說的定義與架構' },
+                    { id: 'all', label: '全範圍綜合挑戰', icon: <Zap className="w-6 h-6 text-yellow-500"/>, desc: '包含以上所有單元的綜合測驗', isAll: true },
+                ];
+                return (
+                    <div className="h-full flex flex-col bg-stone-50">
+                        <div className="bg-white shadow-sm border-b px-4 py-3 flex items-center sticky top-0 z-10">
+                            <button onClick={onBack} className="flex items-center text-stone-600 hover:text-cyan-600 mr-4">
+                                <ArrowLeft className="w-5 h-5 mr-1" /> 返回
+                            </button>
+                            <h2 className="font-bold text-lg text-stone-800">選擇測驗單元</h2>
+                        </div>
+                        
+                        <div className="p-6 overflow-y-auto">
+                            {hasSavedSession && (
+                                <div className="max-w-4xl mx-auto mb-6">
+                                    <button onClick={handleResume} className="w-full bg-stone-800 text-white p-4 rounded-xl shadow-lg hover:bg-stone-700 transition flex items-center justify-center animate-pulse">
+                                        <RotateCcw className="w-5 h-5 mr-2 text-emerald-400" />
+                                        <span className="font-bold text-lg">繼續上次未完成的測驗</span>
+                                    </button>
+                                </div>
+                            )}
+                            
+                            <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {categories.map(cat => (
+                                    <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} className={`text-left p-6 rounded-2xl shadow-sm border-2 transition hover:shadow-md flex items-start ${cat.isAll ? 'bg-gradient-to-br from-yellow-50 to-orange-50 border-yellow-200 hover:border-yellow-400' : 'bg-white border-stone-100 hover:border-cyan-200'}`}>
+                                        <div className={`p-3 rounded-full mr-4 ${cat.isAll ? 'bg-white shadow-sm' : 'bg-stone-50'}`}>{cat.icon}</div>
+                                        <div>
+                                            <h3 className={`font-bold text-lg mb-1 ${cat.isAll ? 'text-yellow-800' : 'text-stone-800'}`}>{cat.label}</h3>
+                                            <p className="text-sm text-stone-500">{cat.desc}</p>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (questions.length === 0) return <LoadingScreen />;
+            const currentQ = questions[currentQuestionIndex];
+            const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+            
+            return (
+                <div className="h-full flex flex-col bg-stone-50 relative">
+                    {showConfetti && <Confetti />}
+                    <div className="bg-white shadow-sm px-4 py-3 flex items-center justify-between z-10">
+                        <div className="flex items-center"><button onClick={onBack} className="flex items-center text-stone-500 hover:text-cyan-600 mr-4 px-3 py-1 rounded-full hover:bg-stone-50 transition border border-transparent hover:border-stone-200"><Home className="w-4 h-4 mr-1" /> <span className="text-sm font-medium">首頁</span></button><div className="flex items-center text-stone-500 border-l pl-4"><span className="font-mono text-lg font-bold text-cyan-600 mr-2">{currentQuestionIndex + 1}</span><span className="text-sm">/ {questions.length}</span></div></div>
+                        <div className="flex-1 mx-4 h-2 bg-stone-200 rounded-full overflow-hidden max-w-xs md:max-w-md hidden md:block"><div className="h-full bg-cyan-500 transition-all duration-300" style={{ width: `${progress}%` }}></div></div>
+                        <button onClick={() => toggleFavorite(currentQ.id)} className={`p-2 rounded-full hover:bg-stone-100 transition`}><Heart className={`w-6 h-6 transition-colors duration-300 ${favorites.has(currentQ.id) ? 'fill-rose-500 text-rose-500' : 'text-stone-400'}`} /></button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center">
+                        <div className="w-full max-w-2xl flex-1">
+                            <div className="bg-white rounded-2xl shadow-lg p-6 md:p-10 mb-6 relative">
+                                <span className="inline-block px-3 py-1 bg-cyan-100 text-cyan-700 text-xs font-bold rounded-full mb-4">{currentQ.category}</span>
+                                <h3 className="text-xl md:text-2xl font-bold text-stone-800 mb-8 leading-relaxed">{currentQ.question}</h3>
+                                <div className="space-y-3">{currentQ.options.map((opt, i) => {
+                                    let statusClass = "border-stone-100 hover:border-stone-300 text-stone-700";
+                                    if (isAnswered) { if (opt === currentQ.answer) { statusClass = "border-emerald-500 bg-emerald-50 text-emerald-900 font-bold"; } else if (opt === answers[currentQ.id]) { statusClass = "border-red-500 bg-red-50 text-red-900"; } else { statusClass = "border-stone-100 opacity-50"; } }
+                                    return (<button key={i} onClick={() => handleAnswer(opt)} disabled={isAnswered} className={`w-full text-left p-5 rounded-xl border-2 transition relative text-lg font-medium ${statusClass}`}><span className="inline-block w-6 font-bold text-stone-400 mr-2">{String.fromCharCode(65 + i)}.</span>{opt}{isAnswered && opt === currentQ.answer && <CheckCircle className="w-5 h-5 text-emerald-600 absolute right-4 top-1/2 -translate-y-1/2" />}{isAnswered && opt === answers[currentQ.id] && opt !== currentQ.answer && <XCircle className="w-5 h-5 text-red-600 absolute right-4 top-1/2 -translate-y-1/2" />}</button>);
+                                })}</div>
+                            </div>
+                            {isAnswered && (<div className={`rounded-xl p-6 mb-6 animate-fade-in ${answers[currentQ.id] === currentQ.answer ? 'bg-emerald-100 text-emerald-900' : 'bg-red-50 text-red-900'}`}><div className="flex items-center mb-2 font-bold text-lg">{answers[currentQ.id] === currentQ.answer ? <><CheckCircle className="w-6 h-6 mr-2" /> 答對了！</> : <><XCircle className="w-6 h-6 mr-2" /> 答錯了！</>}</div><div className="mt-4 text-xl"><span className="font-bold">正確答案：</span> {currentQ.answer}<div className="mt-3 text-stone-700 text-lg leading-relaxed"></div></div></div>)}
+                        </div>
+                    </div>
+                    <div className="bg-white p-4 border-t flex justify-between items-center z-10 sticky bottom-0">
+                        <div className="w-24"></div> 
+                        {isAnswered ? (currentQuestionIndex < questions.length - 1 ? (<button onClick={() => { setIsAnswered(false); setShowConfetti(false); setCurrentQuestionIndex(c => c + 1); }} className="px-8 py-3 bg-stone-800 text-white rounded-full hover:bg-stone-700 transition font-bold shadow-lg flex items-center animate-bounce-subtle">下一題 <ChevronRight className="w-5 h-5 ml-1" /></button>) : (<button onClick={handleSubmit} disabled={isSubmitting} className="px-8 py-3 bg-cyan-600 text-white rounded-full hover:bg-cyan-700 transition font-bold shadow-lg shadow-cyan-200 flex items-center disabled:opacity-50 disabled:cursor-not-allowed">{isSubmitting ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> 處理中...</> : <>查看總成績 <CheckCircle className="w-5 h-5 ml-2" /></>}</button>)) : (<div className="text-stone-400 text-sm italic">請選擇一個答案以繼續</div>)}<div className="w-24"></div>
+                    </div>
+                </div>
+            );
+        };
+
+        const QuickQuizModule = ({ onBack, onComplete }) => {
+            const [questions, setQuestions] = useState([]);
+            const [answers, setAnswers] = useState({});
+            const [score, setScore] = useState(0);
+            const [favorites, setFavorites] = useState(new Set());
+            const [showConfetti, setShowConfetti] = useState(false);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [showResumeDialog, setShowResumeDialog] = useState(false);
+            const scrollRef = useRef(null);
+
+            useEffect(() => {
+                const initQuiz = () => {
+                    const saved = LocalDB.getProgress(STORAGE_KEYS.QUIZ_PROGRESS_QUICK);
+                    if (saved && saved.questions && saved.questions.length > 0) {
+                        setShowResumeDialog(true);
+                        // Store temp data to state just in case, but rely on dialog choice
+                        return;
+                    } 
+                    startNewQuiz();
+                };
+                
+                // Initialize Favorites
+                const favSet = LocalDB.getFavorites();
+                const intSet = new Set(Array.from(favSet).map(id => parseInt(id)));
+                setFavorites(intSet);
+
+                initQuiz();
+            }, []);
+
+            // Save progress whenever answers change
+            useEffect(() => {
+                if (questions.length > 0 && Object.keys(answers).length > 0) {
+                    LocalDB.saveProgress(STORAGE_KEYS.QUIZ_PROGRESS_QUICK, {
+                        questions, // Must save order
+                        answers,
+                        score
+                    });
+                }
+            }, [answers, score, questions]);
+
+            const startNewQuiz = () => {
+                const shuffled = [...ALL_QUESTIONS].sort(() => 0.5 - Math.random());
+                setQuestions(shuffled);
+                setAnswers({});
+                setScore(0);
+                LocalDB.clearProgress(STORAGE_KEYS.QUIZ_PROGRESS_QUICK);
+            };
+
+            const resumeQuiz = () => {
+                const saved = LocalDB.getProgress(STORAGE_KEYS.QUIZ_PROGRESS_QUICK);
+                if (saved) {
+                    setQuestions(saved.questions);
+                    setAnswers(saved.answers);
+                    setScore(saved.score);
+                }
+                setShowResumeDialog(false);
+            };
+
+            const toggleFavorite = (qId) => {
+                const newFavs = LocalDB.toggleFavorite(qId);
+                const intSet = new Set(Array.from(newFavs).map(id => parseInt(id)));
+                setFavorites(intSet);
+            };
+
+            const handleAnswer = (qId, option, correctAns, category, questionText) => {
+                if (answers[qId]) return; // Already answered
+
+                const isCorrect = option === correctAns;
+                setAnswers(prev => ({ ...prev, [qId]: option }));
+                
+                if (isCorrect) {
+                    playSound('correct');
+                    setScore(prev => prev + 1);
+                } else {
+                    playSound('incorrect');
+                    // Immediate Mistake Recording
+                    LocalDB.addMistake({
+                        id: qId,
+                        question: questionText,
+                        answer: correctAns,
+                        category: category
+                    });
+                }
+            };
+
+            const handleFinish = () => {
+                if (isSubmitting) return;
+                setIsSubmitting(true);
+                
+                // Calculate detailed results for history
+                const details = questions.filter(q => answers[q.id]).map(q => ({
+                    id: q.id,
+                    question: q.question,
+                    userAnswer: answers[q.id],
+                    correctAnswer: q.answer,
+                    isCorrect: answers[q.id] === q.answer,
+                    options: q.options,
+                    category: q.category
+                }));
+
+                if (details.length > 0) {
+                     LocalDB.addHistory({
+                        score: Math.round((score / questions.length) * 100), 
+                        total: questions.length, 
+                        category: '快速測驗 (列表)',
+                        details: details
+                    });
+                }
+                
+                // Clear saved progress
+                LocalDB.clearProgress(STORAGE_KEYS.QUIZ_PROGRESS_QUICK);
+
+                onComplete({ 
+                    score: Math.round((score / questions.length) * 100), 
+                    details: details.length > 0 ? details : [] 
+                });
+            };
+
+            if (showResumeDialog) {
+                return (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl animate-fade-in text-center">
+                            <div className="bg-amber-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <History className="w-8 h-8 text-amber-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-stone-800 mb-2">發現未完成的測驗</h3>
+                            <p className="text-stone-500 mb-6">您上次還有未完成的快速測驗進度，是否要繼續？</p>
+                            <div className="flex gap-3">
+                                <button onClick={() => { setShowResumeDialog(false); startNewQuiz(); }} className="flex-1 py-3 border-2 border-stone-200 text-stone-600 rounded-xl font-bold hover:bg-stone-50 transition">
+                                    重新開始
+                                </button>
+                                <button onClick={resumeQuiz} className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition shadow-lg shadow-amber-200">
+                                    繼續測驗
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (questions.length === 0) return <LoadingScreen />;
+
+            return (
+                <div className="h-full flex flex-col bg-stone-100">
+                    {/* Header */}
+                    <div className="bg-white shadow-md border-b px-4 py-3 flex items-center justify-between sticky top-0 z-20">
+                         <div className="flex items-center">
+                            <button onClick={onBack} className="flex items-center text-stone-600 hover:text-cyan-600 mr-4">
+                                <ArrowLeft className="w-5 h-5 mr-1" /> 返回
+                            </button>
+                            <h2 className="font-bold text-lg text-amber-600 flex items-center"><FastForward className="w-5 h-5 mr-2" /> 快速測驗模式</h2>
+                        </div>
+                        <div className="bg-stone-800 text-white px-4 py-1.5 rounded-full font-mono font-bold shadow-inner flex items-center">
+                            <span className="text-emerald-400 mr-2">答對: {score}</span> <span className="text-stone-500 text-xs mx-1">/</span> <span className="text-stone-300">總題數: {questions.length}</span>
+                        </div>
+                    </div>
+
+                    {/* Question List */}
+                    <div className="flex-1 overflow-y-auto p-4 md:p-6" ref={scrollRef}>
+                        <div className="max-w-3xl mx-auto space-y-6">
+                            {questions.map((q, index) => {
+                                const userAnswer = answers[q.id];
+                                const isAnswered = !!userAnswer;
+                                const isCorrect = userAnswer === q.answer;
+                                
+                                return (
+                                    <div key={q.id} className={`bg-white rounded-xl shadow-sm border-l-4 p-5 transition-all ${isAnswered ? (isCorrect ? 'border-emerald-500 bg-emerald-50/30' : 'border-red-500 bg-red-50/30') : 'border-stone-200 hover:border-amber-300'}`}>
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div className="flex items-center">
+                                                <span className="bg-stone-100 text-stone-500 text-xs font-bold px-2 py-1 rounded mr-2">#{index + 1}</span>
+                                                <span className="bg-cyan-50 text-cyan-700 text-xs font-bold px-2 py-1 rounded">{q.category}</span>
+                                            </div>
+                                            <button onClick={() => toggleFavorite(q.id)} className="text-stone-300 hover:text-rose-500 transition">
+                                                 <Heart className={`w-5 h-5 ${favorites.has(q.id) ? 'fill-rose-500 text-rose-500' : ''}`} />
+                                            </button>
+                                        </div>
+
+                                        <h3 className="text-lg font-bold text-stone-800 mb-4">{q.question}</h3>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {q.options.map((opt, i) => {
+                                                let btnClass = "border-stone-200 text-stone-600 hover:bg-stone-50";
+                                                let icon = null;
+
+                                                if (isAnswered) {
+                                                    if (opt === q.answer) {
+                                                        btnClass = "border-emerald-500 bg-emerald-100 text-emerald-800 font-bold ring-2 ring-emerald-200";
+                                                        icon = <CheckCircle className="w-5 h-5 ml-auto text-emerald-600" />;
+                                                    } else if (opt === userAnswer) { // Wrong answer selected
+                                                        btnClass = "border-red-500 bg-red-100 text-red-800 font-bold";
+                                                        icon = <XCircle className="w-5 h-5 ml-auto text-red-600" />;
+                                                    } else {
+                                                        btnClass = "border-stone-100 text-stone-400 opacity-50";
+                                                    }
+                                                }
+
+                                                return (
+                                                    <button 
+                                                        key={i} 
+                                                        onClick={() => handleAnswer(q.id, opt, q.answer, q.category, q.question)}
+                                                        disabled={isAnswered}
+                                                        className={`text-left px-4 py-3 rounded-lg border-2 transition flex items-center ${btnClass}`}
+                                                    >
+                                                        <span className="font-mono mr-2 opacity-50">{String.fromCharCode(65 + i)}.</span>
+                                                        <span className="flex-1">{opt}</span>
+                                                        {icon}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        
+                                        {/* Feedback Text */}
+                                        {isAnswered && !isCorrect && (
+                                            <div className="mt-3 text-sm text-red-600 font-bold flex items-center animate-fade-in">
+                                                <AlertCircle className="w-4 h-4 mr-1" /> 答錯了！正確答案是：{q.answer} (已加入錯題本)
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        
+                        {/* Finish Button Area */}
+                        <div className="max-w-3xl mx-auto mt-8 mb-10">
+                            <button 
+                                onClick={handleFinish} 
+                                className="w-full bg-stone-800 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-stone-700 transition flex items-center justify-center text-lg"
+                            >
+                                <CheckCircle className="w-6 h-6 mr-2 text-emerald-400" /> 結束測驗並查看結果
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ResultReview = ({ result, onExit }) => {
+            return (
+                <div className="h-full bg-stone-50 overflow-y-auto">
+                    <div className="max-w-3xl mx-auto p-6">
+                        <div className="bg-white rounded-3xl shadow-lg p-8 mb-8 text-center relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-cyan-500 to-blue-500"></div>
+                            <h2 className="text-3xl font-bold text-stone-800 mb-2">測驗結果</h2>
+                            <div className="text-6xl font-black text-cyan-600 my-4">{result.score}<span className="text-2xl text-stone-400 font-normal">分</span></div>
+                            <div className="flex justify-center gap-4 text-sm text-stone-500">
+                                <span>總題數: {result.details.length}</span>
+                                <span className="text-green-600">答對: {result.details.filter(d => d.isCorrect).length}</span>
+                                <span className="text-red-500">答錯: {result.details.filter(d => !d.isCorrect).length}</span>
+                            </div>
+                            <button onClick={onExit} className="mt-8 px-8 py-2 border border-stone-300 rounded-full hover:bg-stone-50 transition">
+                                返回首頁
+                            </button>
+                        </div>
+
+                        <h3 className="text-xl font-bold text-stone-800 mb-4 px-2">試題解析</h3>
+                        <div className="space-y-4">
+                            {result.details.length === 0 ? <p className="text-center text-stone-500 py-4">本次測驗未作答任何題目。</p> : null}
+                            {result.details.map((item, i) => (
+                                <div key={i} className={`bg-white rounded-xl shadow-sm p-6 border-l-4 ${item.isCorrect ? 'border-emerald-500' : 'border-red-500'}`}>
+                                    <div className="flex items-start justify-between mb-3">
+                                        <h4 className="font-bold text-lg text-stone-800 flex-1">{i + 1}. {item.question}</h4>
+                                        {item.isCorrect 
+                                            ? <CheckCircle className="w-6 h-6 text-emerald-500 flex-shrink-0" />
+                                            : <XCircle className="w-6 h-6 text-red-500 flex-shrink-0" />
+                                        }
+                                    </div>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex items-center">
+                                            <span className="w-20 text-stone-500">您的答案：</span>
+                                            <span className={`font-bold ${item.isCorrect ? 'text-emerald-700' : 'text-red-600'}`}>
+                                                {item.userAnswer || '(未作答)'}
+                                            </span>
+                                        </div>
+                                        {!item.isCorrect && (
+                                            <div className="flex items-center">
+                                                <span className="w-20 text-stone-500">正確答案：</span>
+                                                <span className="font-bold text-emerald-700">{item.correctAnswer}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ListView = ({ title, type, user, onBack }) => {
+            const [items, setItems] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [expandedId, setExpandedId] = useState(null);
+
+            useEffect(() => {
+                const fetchData = async () => {
+                    let data = [];
+                    
+                    if (type === 'history') {
+                        data = LocalDB.getHistory();
+                    } else if (type === 'mistakes') {
+                        data = LocalDB.getMistakes();
+                    } else if (type === 'favorites') {
+                        const favSet = LocalDB.getFavorites();
+                        const favIds = Array.from(favSet).map(id => parseInt(id));
+                        data = ALL_QUESTIONS.filter(q => favIds.includes(q.id));
+                    }
+
+                    setItems(data);
+                    setLoading(false);
+                };
+                fetchData();
+            }, [user, type]);
+
+            if (loading) return <LoadingScreen />;
+
+            return (
+                <div className="h-full bg-stone-50 flex flex-col">
+                    <div className="bg-white shadow-sm border-b px-4 py-3 flex items-center sticky top-0 z-10">
+                        <button onClick={onBack} className="flex items-center text-stone-600 hover:text-cyan-600 mr-4">
+                            <ArrowLeft className="w-5 h-5 mr-1" /> 返回
+                        </button>
+                        <h2 className="font-bold text-lg">{title}</h2>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 md:p-6">
+                        <div className="max-w-3xl mx-auto space-y-4">
+                            {items.length === 0 && (
+                                <div className="text-center py-20 text-stone-400">
+                                    <p>目前沒有紀錄</p>
+                                </div>
+                            )}
+
+                            {/* History Item */}
+                            {type === 'history' && items.map((item) => (
+                                <div key={item.id} className="bg-white p-4 rounded-xl shadow-sm hover:shadow-md transition">
+                                    <div 
+                                        className="flex justify-between items-center cursor-pointer" 
+                                        onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                                    >
+                                        <div>
+                                            <div className="text-stone-500 text-xs mb-1">
+                                                {item.date ? new Date(item.date).toLocaleString() : 'Just now'}
+                                            </div>
+                                            <div className="font-bold text-stone-800 flex items-center">
+                                                <span className="mr-2 text-sm bg-stone-100 px-2 py-0.5 rounded text-stone-600">
+                                                    {item.category || '綜合挑戰'}
+                                                </span>
+                                                測驗得分：
+                                                <span className={`text-lg ml-1 ${item.score >= 80 ? 'text-emerald-600' : 'text-orange-600'}`}>
+                                                    {item.score}
+                                                </span> 分
+                                            </div>
+                                        </div>
+                                        {expandedId === item.id ? (
+                                            <ChevronUp className="w-5 h-5 text-stone-400" />
+                                        ) : (
+                                            <ChevronDown className="w-5 h-5 text-stone-400" />
+                                        )}
+                                    </div>
+                                    
+                                    {/* Enhanced Detail View for History */}
+                                    {expandedId === item.id && (
+                                        <div className="mt-4 pt-4 border-t border-stone-100 space-y-4">
+                                            {item.details.map((d, i) => (
+                                                <div key={i} className="bg-stone-50 p-4 rounded-lg border border-stone-200">
+                                                    {/* Question Header */}
+                                                    <div className="flex items-start mb-3">
+                                                        <span className="font-mono font-bold text-orange-600 mr-2 mt-0.5">{i+1}.</span>
+                                                        <h4 className="font-bold text-stone-800 text-lg leading-snug flex-1">
+                                                            {d.question}
+                                                        </h4>
+                                                        {d.isCorrect 
+                                                            ? <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 ml-2" />
+                                                            : <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 ml-2" />
+                                                        }
+                                                    </div>
+
+                                                    {/* Options Display */}
+                                                    <div className="space-y-1 mb-3 pl-6">
+                                                        {d.options && d.options.map((opt, idx) => {
+                                                            let optionStyle = "text-stone-600";
+                                                            let icon = null;
+
+                                                            if (opt === d.correctAnswer) {
+                                                                optionStyle = "bg-emerald-100 text-emerald-800 font-bold border-emerald-200";
+                                                                icon = <CheckCircle className="w-4 h-4 ml-2 inline" />;
+                                                            } else if (opt === d.userAnswer && !d.isCorrect) {
+                                                                optionStyle = "bg-red-50 text-red-800 line-through border-red-100";
+                                                                icon = <XCircle className="w-4 h-4 ml-2 inline" />;
+                                                            }
+
+                                                            return (
+                                                                <div key={idx} className={`px-3 py-2 rounded text-sm border border-transparent ${optionStyle} flex items-center`}>
+                                                                    <span className="font-mono w-5 opacity-50 mr-1">{String.fromCharCode(65 + idx)}.</span>
+                                                                    <span className="flex-1">{opt}</span>
+                                                                    {icon}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+
+                                                    {/* Analysis / Feedback Section */}
+                                                    <div className="bg-white p-3 rounded border border-stone-100 text-sm mt-2 pl-6 relative">
+                                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-400 rounded-l"></div>
+                                                        <div className="flex flex-col sm:flex-row gap-y-1 sm:gap-x-6 text-sm mb-1">
+                                                            <div>
+                                                                <span className="text-stone-400 mr-2">您的作答:</span>
+                                                                <span className={`font-bold ${d.isCorrect ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                                    {d.userAnswer || '未作答'}
+                                                                </span>
+                                                            </div>
+                                                            {!d.isCorrect && (
+                                                                <div>
+                                                                    <span className="text-stone-400 mr-2">正確答案:</span>
+                                                                    <span className="font-bold text-emerald-600">{d.correctAnswer}</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+
+                            {/* Mistakes & Favorites List */}
+                            {(type === 'mistakes' || type === 'favorites') && items.map((item) => (
+                                <div key={item.id} className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-orange-400">
+                                    <div className="flex justify-between mb-3">
+                                        <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded">{item.category || (ALL_QUESTIONS.find(q=>q.id === item.id)?.category)}</span>
+                                        {type === 'mistakes' ? (
+                                            <span className="text-xs text-red-500 font-bold">答錯</span>
+                                        ) : (
+                                            <Heart className="w-5 h-5 fill-rose-500 text-rose-500" />
+                                        )}
+                                    </div>
+                                    <h3 className="font-bold text-lg text-stone-800 mb-3">{item.question}</h3>
+                                    <div className="bg-emerald-50 p-3 rounded text-sm text-emerald-800">
+                                        <span className="font-bold">正確答案：</span> {item.answer || (ALL_QUESTIONS.find(q=>q.id === item.id)?.answer)}
+                                    </div>
+                                    
+                                    {/* Controls for removal */}
+                                    <div className="mt-4 flex justify-end">
+                                        {type === 'mistakes' && (
+                                            <button 
+                                                onClick={async (e) => {
+                                                    e.target.innerText = "已移除";
+                                                    e.target.disabled = true;
+                                                    LocalDB.removeMistake(item.id);
+                                                }}
+                                                className="text-sm text-stone-400 hover:text-red-500 flex items-center"
+                                            >
+                                                <CheckCircle className="w-4 h-4 mr-1"/> 我學會了（移除）
+                                            </button>
+                                        )}
+                                        {type === 'favorites' && (
+                                            <button 
+                                                onClick={async (e) => {
+                                                    e.target.innerText = "已取消收藏";
+                                                    e.target.disabled = true;
+                                                    LocalDB.removeFavorite(item.id);
+                                                }}
+                                                className="text-sm text-stone-400 hover:text-red-500 flex items-center"
+                                            >
+                                                <Heart className="w-4 h-4 mr-1"/> 取消收藏
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [view, setView] = useState('auth'); 
+            const [loading, setLoading] = useState(true);
+            const [quizResult, setQuizResult] = useState(null);
+
+            useEffect(() => {
+                const checkLogin = () => {
+                    const savedUser = LocalDB.getUser();
+                    if (savedUser) {
+                        setUser(savedUser);
+                        setView('dashboard');
+                    } else {
+                        setUser(null);
+                        setView('auth');
+                    }
+                    setLoading(false);
+                };
+                checkLogin();
+            }, []);
+
+            if (loading) return <LoadingScreen />;
+
+            if (view === 'auth') return <AuthScreen onLogin={(u) => { setUser(u); setView('dashboard'); }} />;
+            if (view === 'dashboard') return <Dashboard user={user} onLogout={() => { setUser(null); setView('auth'); }} onNavigate={setView} />;
+            if (view === 'learn') return <LearningModule onBack={() => setView('dashboard')} />;
+            if (view === 'quiz_setup') {
+                return <FullQuizModule user={user} onBack={() => setView('dashboard')} onComplete={(res) => { setQuizResult(res); setView('quiz_result'); }} />;
+            }
+            if (view === 'quick_quiz') {
+                 return <QuickQuizModule onBack={() => setView('dashboard')} onComplete={(res) => { setQuizResult(res); setView('quiz_result'); }} />;
+            }
+            if (view === 'quiz_result') return <ResultReview result={quizResult} onExit={() => setView('dashboard')} />;
+            if (view === 'history') return <ListView title="測驗歷史紀錄" type="history" user={user} onBack={() => setView('dashboard')} />;
+            if (view === 'mistakes') return <ListView title="錯題本 (尚未掌握)" type="mistakes" user={user} onBack={() => setView('dashboard')} />;
+            if (view === 'favorites') return <ListView title="我的題目收藏" type="favorites" user={user} onBack={() => setView('dashboard')} />;
+
+            return <div className="p-4 text-center">未知頁面</div>;
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
