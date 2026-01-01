@@ -1025,8 +1025,6 @@
             const [showConfetti, setShowConfetti] = useState(false);
             const [isSubmitting, setIsSubmitting] = useState(false);
             const [showResumeDialog, setShowResumeDialog] = useState(false);
-            const [restartStep, setRestartStep] = useState(0); // 0: Normal, 1: Confirm
-            const [scrollToId, setScrollToId] = useState(null); // For auto-scrolling
             const scrollRef = useRef(null);
 
             useEffect(() => {
@@ -1048,20 +1046,6 @@
                 initQuiz();
             }, []);
 
-            // Handle auto-scroll after resume
-            useEffect(() => {
-                if (scrollToId) {
-                    // Use a small timeout to ensure DOM is rendered
-                    const timer = setTimeout(() => {
-                        const element = document.getElementById(scrollToId);
-                        if (element) {
-                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }
-                    }, 300);
-                    return () => clearTimeout(timer);
-                }
-            }, [scrollToId, questions]);
-
             // Save progress whenever answers change
             useEffect(() => {
                 if (questions.length > 0 && Object.keys(answers).length > 0) {
@@ -1079,7 +1063,6 @@
                 setAnswers({});
                 setScore(0);
                 LocalDB.clearProgress(STORAGE_KEYS.QUIZ_PROGRESS_QUICK);
-                setRestartStep(0);
             };
 
             const resumeQuiz = () => {
@@ -1088,19 +1071,6 @@
                     setQuestions(saved.questions);
                     setAnswers(saved.answers);
                     setScore(saved.score);
-                    
-                    // Determine the last answered question to scroll to
-                    let lastIndex = -1;
-                    saved.questions.forEach((q, idx) => {
-                        if (saved.answers[q.id]) {
-                            lastIndex = idx;
-                        }
-                    });
-                    
-                    if (lastIndex !== -1) {
-                        // Scroll to the last answered question so user can continue from next
-                        setScrollToId(`q-${saved.questions[lastIndex].id}`);
-                    }
                 }
                 setShowResumeDialog(false);
             };
@@ -1175,18 +1145,8 @@
                             <h3 className="text-xl font-bold text-stone-800 mb-2">發現未完成的測驗</h3>
                             <p className="text-stone-500 mb-6">您上次還有未完成的快速測驗進度，是否要繼續？</p>
                             <div className="flex gap-3">
-                                <button 
-                                    onClick={() => { 
-                                        if (restartStep === 0) {
-                                            setRestartStep(1);
-                                        } else {
-                                            setShowResumeDialog(false); 
-                                            startNewQuiz(); 
-                                        }
-                                    }} 
-                                    className={`flex-1 py-3 border-2 rounded-xl font-bold transition ${restartStep === 1 ? 'bg-red-50 border-red-500 text-red-500' : 'border-stone-200 text-stone-600 hover:bg-stone-50'}`}
-                                >
-                                    {restartStep === 1 ? "確定刪除進度？(再次點擊)" : "重新開始"}
+                                <button onClick={() => { setShowResumeDialog(false); startNewQuiz(); }} className="flex-1 py-3 border-2 border-stone-200 text-stone-600 rounded-xl font-bold hover:bg-stone-50 transition">
+                                    重新開始
                                 </button>
                                 <button onClick={resumeQuiz} className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition shadow-lg shadow-amber-200">
                                     繼續測驗
@@ -1223,7 +1183,7 @@
                                 const isCorrect = userAnswer === q.answer;
                                 
                                 return (
-                                    <div id={`q-${q.id}`} key={q.id} className={`bg-white rounded-xl shadow-sm border-l-4 p-5 transition-all ${isAnswered ? (isCorrect ? 'border-emerald-500 bg-emerald-50/30' : 'border-red-500 bg-red-50/30') : 'border-stone-200 hover:border-amber-300'}`}>
+                                    <div key={q.id} className={`bg-white rounded-xl shadow-sm border-l-4 p-5 transition-all ${isAnswered ? (isCorrect ? 'border-emerald-500 bg-emerald-50/30' : 'border-red-500 bg-red-50/30') : 'border-stone-200 hover:border-amber-300'}`}>
                                         <div className="flex justify-between items-start mb-3">
                                             <div className="flex items-center">
                                                 <span className="bg-stone-100 text-stone-500 text-xs font-bold px-2 py-1 rounded mr-2">#{index + 1}</span>
